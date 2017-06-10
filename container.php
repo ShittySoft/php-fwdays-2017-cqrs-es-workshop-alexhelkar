@@ -11,6 +11,8 @@ use Bernard\QueueFactory;
 use Bernard\QueueFactory\PersistentFactory;
 use Building\Domain\Aggregate\Building;
 use Building\Domain\Command;
+use Building\Domain\Command\NotifySecurityOfCheckInAnomaly;
+use Building\Domain\DomainEvent\CheckInAnomalyDetected;
 use Building\Domain\Repository\BuildingRepositoryInterface;
 use Building\Infrastructure\Repository\BuildingRepository;
 use Doctrine\DBAL\Connection;
@@ -43,14 +45,14 @@ use Prooph\ServiceBus\Plugin\ServiceLocatorPlugin;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Zend\ServiceManager\ServiceManager;
 
-require_once __DIR__ . '/vendor/autoload.php';
+require_once __DIR__.'/vendor/autoload.php';
 
 return new ServiceManager([
     'factories' => [
         Connection::class => function () {
             $connection = DriverManager::getConnection([
                 'driverClass' => Driver::class,
-                'path'        => __DIR__ . '/data/db.sqlite3',
+                'path' => __DIR__.'/data/db.sqlite3',
             ]);
 
             try {
@@ -67,8 +69,8 @@ return new ServiceManager([
             return $connection;
         },
 
-        EventStore::class                  => function (ContainerInterface $container) {
-            $eventBus   = new EventBus();
+        EventStore::class => function (ContainerInterface $container) {
+            $eventBus = new EventBus();
             $eventStore = new EventStore(
                 new DoctrineEventStoreAdapter(
                     $container->get(Connection::class),
@@ -94,9 +96,10 @@ return new ServiceManager([
                 public function __construct(
                     ContainerInterface $eventHandlers,
                     ContainerInterface $projectors
-                ) {
+                )
+                {
                     $this->eventHandlers = $eventHandlers;
-                    $this->projectors    = $projectors;
+                    $this->projectors = $projectors;
                 }
 
                 public function attach(ActionEventEmitter $dispatcher)
@@ -115,8 +118,8 @@ return new ServiceManager([
 
                     $handlers = [];
 
-                    $listeners  = $messageName . '-listeners';
-                    $projectors = $messageName . '-projectors';
+                    $listeners = $messageName.'-listeners';
+                    $projectors = $messageName.'-projectors';
 
                     if ($this->projectors->has($projectors)) {
                         $handlers = array_merge($handlers, $this->eventHandlers->get($projectors));
@@ -137,11 +140,12 @@ return new ServiceManager([
             return $eventStore;
         },
 
-        CommandBus::class                  => function (ContainerInterface $container) : CommandBus {
+        CommandBus::class => function (ContainerInterface $container): CommandBus {
             $commandBus = new CommandBus();
 
             $commandBus->utilize(new ServiceLocatorPlugin($container));
-            $commandBus->utilize(new class implements ActionEventListenerAggregate {
+            $commandBus->utilize(new class implements ActionEventListenerAggregate
+            {
                 public function attach(ActionEventEmitter $dispatcher)
                 {
                     $dispatcher->attachListener(MessageBus::EVENT_ROUTE, [$this, 'onRoute']);
@@ -172,34 +176,34 @@ return new ServiceManager([
         // ignore this - this is async stuff
         // we'll get to it later
 
-        QueueFactory::class => function () : QueueFactory {
+        QueueFactory::class => function (): QueueFactory {
             return new PersistentFactory(
-                new FlatFileDriver(__DIR__ . '/data/bernard'),
+                new FlatFileDriver(__DIR__.'/data/bernard'),
                 new BernardSerializer(new FQCNMessageFactory(), new NoOpMessageConverter())
             );
         },
 
-        Queue::class => function (ContainerInterface $container) : Queue {
+        Queue::class => function (ContainerInterface $container): Queue {
             return $container->get(QueueFactory::class)->create('commands');
         },
 
-        MessageProducer::class => function (ContainerInterface $container) : MessageProducer {
+        MessageProducer::class => function (ContainerInterface $container): MessageProducer {
             return new BernardMessageProducer(
-                new Producer($container->get(QueueFactory::class),new EventDispatcher()),
+                new Producer($container->get(QueueFactory::class), new EventDispatcher()),
                 'commands'
             );
         },
 
         // Command -> CommandHandlerFactory
         // this is where most of the work will be done (by you!)
-        Command\RegisterNewBuilding::class => function (ContainerInterface $container) : callable {
+        Command\RegisterNewBuilding::class => function (ContainerInterface $container): callable {
             $buildings = $container->get(BuildingRepositoryInterface::class);
 
             return function (Command\RegisterNewBuilding $command) use ($buildings) {
                 $buildings->add(Building::new($command->name()));
             };
         },
-        Command\CheckInUser::class => function (ContainerInterface $container) : callable {
+        Command\CheckInUser::class => function (ContainerInterface $container): callable {
             $buildings = $container->get(BuildingRepositoryInterface::class);
 
             return function (Command\CheckInUser $command) use ($buildings) {
@@ -208,7 +212,7 @@ return new ServiceManager([
                     ->checkInUser($command->username());
             };
         },
-        Command\CheckOutUser::class => function (ContainerInterface $container) : callable {
+        Command\CheckOutUser::class => function (ContainerInterface $container): callable {
             $buildings = $container->get(BuildingRepositoryInterface::class);
 
             return function (Command\CheckOutUser $command) use ($buildings) {
@@ -217,7 +221,31 @@ return new ServiceManager([
                     ->checkOutUser($command->username());
             };
         },
-        BuildingRepositoryInterface::class => function (ContainerInterface $container) : BuildingRepositoryInterface {
+
+        CheckInAnomalyDetected::class.'-listeners' => function (ContainerInterface $container): array {
+            $commandBus = $container->get(CommandBus::class);
+
+            return [
+                function (CheckInAnomalyDetected $event) use ($commandBus) {
+                    $commandBus->dispatch(NotifySecurityOfCheckInAnomaly::from(
+                        $event->buildingId(),
+                        $event->username()
+                    ));
+                },
+            ];
+        },
+
+        Command\NotifySecurityOfCheckInAnomaly::class => function (ContainerInterface $container) {
+
+            return function (Command\NotifySecurityOfCheckInAnomaly $command){
+                error_log(sprintf(
+                    'Anomaly detected. user: %s. building: %s',
+                    $command->username(),
+                    $command->buildingId()
+                ));
+            };
+        },
+        BuildingRepositoryInterface::class => function (ContainerInterface $container): BuildingRepositoryInterface {
             return new BuildingRepository(
                 new AggregateRepository(
                     $container->get(EventStore::class),

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Building\Domain\Aggregate;
 
+use Building\Domain\DomainEvent\CheckInAnomalyDetected;
+use Building\Domain\DomainEvent\CheckOutAnomalyDetected;
 use Building\Domain\DomainEvent\NewBuildingWasRegistered;
 use Building\Domain\DomainEvent\UserCheckedIn;
 use Building\Domain\DomainEvent\UserCheckedOut;
@@ -27,14 +29,14 @@ final class Building extends AggregateRoot
      */
     private $checkedInUsers = [];
 
-    public static function new(string $name) : self
+    public static function new(string $name): self
     {
         $self = new self();
 
         $self->recordThat(NewBuildingWasRegistered::occur(
             (string) Uuid::uuid4(),
             [
-                'name' => $name
+                'name' => $name,
             ]
         ));
 
@@ -43,30 +45,22 @@ final class Building extends AggregateRoot
 
     public function checkInUser(string $username)
     {
-        if (\array_key_exists($username, $this->checkedInUsers)) {
-            throw new \DomainException(sprintf(
-                'User "%s" is already checked into "%s" ("%s")',
-                $username,
-                $this->name,
-                $this->uuid->toString()
-            ));
-        }
-
+        $anomalyDetected = \array_key_exists($username, $this->checkedInUsers);
         $this->recordThat(UserCheckedIn::with($this->uuid, $username));
+
+        if ($anomalyDetected === true) {
+            $this->recordThat(CheckInAnomalyDetected::with($this->uuid, $username));
+        }
     }
 
     public function checkOutUser(string $username)
     {
-        if (! \array_key_exists($username, $this->checkedInUsers)) {
-            throw new \DomainException(sprintf(
-                'User "%s" is not checked into building "%s" ("%s")',
-                $username,
-                $this->name,
-                $this->uuid->toString()
-            ));
-        }
-
+        $anomalyDetected = !\array_key_exists($username, $this->checkedInUsers);
         $this->recordThat(UserCheckedOut::with($this->uuid, $username));
+
+        if ($anomalyDetected === true) {
+            $this->recordThat(CheckOutAnomalyDetected::with($this->uuid, $username));
+        }
     }
 
     public function whenNewBuildingWasRegistered(NewBuildingWasRegistered $event)
@@ -75,20 +69,30 @@ final class Building extends AggregateRoot
         $this->name = $event->name();
     }
 
-    public function whenUserCheckedIn(UserCheckedIn $event) : void
+    public function whenUserCheckedIn(UserCheckedIn $event): void
     {
         $this->checkedInUsers[$event->username()] = null;
     }
 
-    public function whenUserCheckedOut(UserCheckedOut $event) : void
+    public function whenUserCheckedOut(UserCheckedOut $event): void
     {
         unset($this->checkedInUsers[$event->username()]);
+    }
+
+    public function whenCheckInAnomalyDetected(CheckInAnomalyDetected $event): void
+    {
+
+    }
+
+    public function whenCheckOutAnomalyDetected(CheckOutAnomalyDetected $event): void
+    {
+
     }
 
     /**
      * {@inheritDoc}
      */
-    protected function aggregateId() : string
+    protected function aggregateId(): string
     {
         return (string) $this->uuid;
     }
@@ -96,7 +100,7 @@ final class Building extends AggregateRoot
     /**
      * {@inheritDoc}
      */
-    public function id() : string
+    public function id(): string
     {
         return $this->aggregateId();
     }
