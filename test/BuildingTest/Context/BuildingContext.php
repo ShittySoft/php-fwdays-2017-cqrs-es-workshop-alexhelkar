@@ -7,8 +7,10 @@ namespace BuildingTest\Context;
 use Assert\Assertion;
 use Behat\Behat\Context\Context;
 use Building\Domain\Aggregate\Building;
+use Building\Domain\DomainEvent\CheckInAnomalyDetected;
 use Building\Domain\DomainEvent\NewBuildingWasRegistered;
 use Building\Domain\DomainEvent\UserCheckedIn;
+use Building\Domain\DomainEvent\UserCheckedOut;
 use Prooph\EventSourcing\AggregateChanged;
 use Rhumsaa\Uuid\Uuid;
 
@@ -51,11 +53,53 @@ final class BuildingContext implements Context
     }
 
     /**
+     * @Given a user has checked into the building
+     */
+    public function aUserHasCheckedIntoTheBuilding() : void
+    {
+        $this->record(UserCheckedIn::occur(
+            $this->aggregateId->toString(),
+            ['username' => 'Mr. Magoo']
+        ));
+    }
+
+    /**
      * @When a user checks into the building
      */
     public function aUserChecksIntoTheBuilding() : void
     {
         $this->building()->checkInUser('Mr. Magoo');
+    }
+
+    /**
+     * @When a user checks out of the building
+     */
+    public function aUserChecksOutOfTheBuilding()
+    {
+        $this->building()->checkOutUser('Mr. Magoo');
+    }
+
+    /**
+     * @Then the user should have checked out the building
+     */
+    public function theUserShouldHaveCheckedOutTheBuilding()
+    {
+        /* @var $event UserCheckedIn */
+        $event = $this->getNextRecordedEvent();
+
+        Assertion::isInstanceOf($event, UserCheckedOut::class);
+        Assertion::same($event->username(), 'Mr. Magoo');
+    }
+
+    /**
+     * @Then a check-in anomaly should have been detected
+     */
+    public function aCheckInAnomalyShouldHaveBeenDetected()
+    {
+        /* @var $event UserCheckedIn */
+        $event = $this->getNextRecordedEvent();
+
+        Assertion::isInstanceOf($event, CheckInAnomalyDetected::class);
     }
 
     /**
