@@ -41,6 +41,7 @@ use Prooph\ServiceBus\Message\Bernard\BernardSerializer;
 use Prooph\ServiceBus\MessageBus;
 use Prooph\ServiceBus\Plugin\ServiceLocatorPlugin;
 use Symfony\Component\EventDispatcher\EventDispatcher;
+use Symfony\Component\Serializer\Exception\LogicException;
 use Zend\ServiceManager\ServiceManager;
 
 require_once __DIR__ . '/vendor/autoload.php';

@@ -9,6 +9,7 @@ use Building\Domain\DomainEvent\UserCheckedIn;
 use Building\Domain\DomainEvent\UserCheckedOut;
 use Prooph\EventSourcing\AggregateRoot;
 use Rhumsaa\Uuid\Uuid;
+use Symfony\Component\Serializer\Exception\LogicException;
 
 final class Building extends AggregateRoot
 {
@@ -21,6 +22,11 @@ final class Building extends AggregateRoot
      * @var string
      */
     private $name;
+
+    /**
+     * @var array
+     */
+    private $checkedInUsers = false;
 
     public static function new(string $name) : self
     {
@@ -38,11 +44,19 @@ final class Building extends AggregateRoot
 
     public function checkInUser(string $username)
     {
+        if(array_key_exists($username, $this->checkedInUsers)){
+            throw new \DomainException('This user is already checked in');
+        }
+
         $this->recordThat(UserCheckedIn::with($this->uuid, $username));
     }
 
     public function checkOutUser(string $username)
     {
+        if(!array_key_exists($username, $this->checkedInUsers)){
+            throw new \DomainException('This user is not checked in');
+        }
+
         $this->recordThat(UserCheckedOut::with($this->uuid, $username));
     }
 
@@ -52,14 +66,20 @@ final class Building extends AggregateRoot
         $this->name = $event->name();
     }
 
+    /**
+     * @param UserCheckedIn $event
+     */
     public function whenUserCheckedIn(UserCheckedIn $event) : void
     {
-        // empty, on purpose
+        $this->checkedInUsers[$event->username()] = null;
     }
 
+    /**
+     * @param UserCheckedOut $event
+     */
     public function whenUserCheckedOut(UserCheckedOut $event) : void
     {
-        // empty, on purpose
+        unset($this->checkedInUsers[$event->username()]);
     }
 
     /**
