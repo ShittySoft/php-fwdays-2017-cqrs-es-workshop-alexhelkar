@@ -19,7 +19,7 @@ call_user_func(function () {
     error_reporting(E_ALL);
     ini_set('display_errors', '1');
 
-    $sm = require __DIR__ . '/../container.php';
+    $sm = require __DIR__.'/../container.php';
 
     //////////////////////////
     // Routing/frontend/etc //
@@ -27,7 +27,7 @@ call_user_func(function () {
 
     // Error handling so that our eyes don't bleed: don't do this in production!
     $whoopsHandler = new PrettyPageHandler();
-    $whoops        = new Run();
+    $whoops = new Run();
 
     $whoops->writeToOutput(false);
     $whoops->allowQuit(false);
@@ -37,9 +37,9 @@ call_user_func(function () {
 
     $app->pipeRoutingMiddleware();
 
-    $app->get('/', function (Request $request, Response $response) : Response {
+    $app->get('/', function (Request $request, Response $response): Response {
         ob_start();
-        require __DIR__ . '/../template/index.php';
+        require __DIR__.'/../template/index.php';
         $content = ob_get_clean();
 
         $response->getBody()->write($content);
@@ -54,11 +54,11 @@ call_user_func(function () {
         return $response->withAddedHeader('Location', '/');
     });
 
-    $app->get('/building/{buildingId}', function (Request $request, Response $response) : Response {
+    $app->get('/building/{buildingId}', function (Request $request, Response $response): Response {
         $buildingId = Uuid::fromString($request->getAttribute('buildingId'));
 
         ob_start();
-        require __DIR__ . '/../template/building.php';
+        require __DIR__.'/../template/building.php';
         $content = ob_get_clean();
 
         $response->getBody()->write($content);
@@ -67,7 +67,13 @@ call_user_func(function () {
     });
 
     $app->post('/checkin/{buildingId}', function (Request $request, Response $response) use ($sm) : Response {
+        $buildingId = $request->getAttribute('buildingId');
+        $username =  $request->getParsedBody()['username'];
 
+        $commandBus = $sm->get(CommandBus::class);
+        $commandBus->dispatch(Command\RegisterNewCheckIn::fromNameAndBuildingId($username, $buildingId));
+
+        return $response->withAddedHeader('Location', '/');
     });
 
     $app->post('/checkout/{buildingId}', function (Request $request, Response $response) use ($sm) : Response {

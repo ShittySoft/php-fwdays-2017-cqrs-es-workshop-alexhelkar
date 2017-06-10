@@ -40,6 +40,7 @@ use Prooph\ServiceBus\Message\Bernard\BernardMessageProducer;
 use Prooph\ServiceBus\Message\Bernard\BernardSerializer;
 use Prooph\ServiceBus\MessageBus;
 use Prooph\ServiceBus\Plugin\ServiceLocatorPlugin;
+use Rhumsaa\Uuid\Uuid;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Zend\ServiceManager\ServiceManager;
 
@@ -199,6 +200,16 @@ return new ServiceManager([
                 $buildings->add(Building::new($command->name()));
             };
         },
+
+        Command\RegisterNewCheckIn::class => function (ContainerInterface $container) : callable {
+            $buildings = $container->get(BuildingRepositoryInterface::class);
+
+            return function (Command\RegisterNewCheckIn $command) use ($buildings) {
+                $building = $buildings->get(Uuid::fromString($command->buildingId()));
+                $building->checkInUser($command->username());
+            };
+        },
+
         BuildingRepositoryInterface::class => function (ContainerInterface $container) : BuildingRepositoryInterface {
             return new BuildingRepository(
                 new AggregateRepository(
